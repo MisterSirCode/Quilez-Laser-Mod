@@ -169,22 +169,23 @@ function tool:Tick()
 end
 
 tool.model = {
-    scale = 0.5,
     prefab = [[
 <prefab version="0.9.2">
-    <group name="base">
-        <vox scale="0.5" pos="0.0 0.0 0.0" rot="0.0 0.0 0.0" file="MOD/assets/laser.vox" object="laserbase"/>
+    <group id_="473592032" open_="true" name="laser" pos="0.0 0.0 0.0" rot="0.0 0.0 0.0">
+        <group id_="2048256128" open_="true" name="base" pos="0.0 0.0 0.0">
+            <vox id_="1640400640" pos="-0.025 -0.175 0.175" rot="0.0 0.0 0.0" file="MOD/assets/laser.vox" object="laserbase" scale="0.5"/>
+        </group>
+        <group id_="1912784896" open_="true" name="ring" pos="0.0 0.0 -0.25" rot="0.0 0.0 0.0">
+            <vox id_="2089677312" pos="-0.025 -0.325 0.025" rot="0.0 0.0 0.0" file="MOD/assets/laser.vox" object="laserring" scale="0.5"/>
+        </group>
+        <location id_="1100482176" name="nozzle" pos="-0.0 0.0 0.175"/>
     </group>
-    <group name="ring">
-        <vox scale="0.5" pos="0.0 -0.3 -0.9" rot="0.0 0.0 0.0" file="MOD/assets/laser.vox" object="laserring"/>
-    </group>
-    <location name="nozzle" pos="0.05 0.35 -1.2"/>
 </prefab>
     ]],
 
     objects = {
-        {'laserbase', Vec(13, 1, 13)},
-        {'laserring', Vec(7, 20, 7)},
+        {'laserbase', Vec(7, 12, 7)}, -- these sizes were swapped (and the 12 was a 20)
+        {'laserring', Vec(13, 1, 13)},
     }
 }
 
