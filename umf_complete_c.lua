@@ -1,5 +1,8 @@
-local __RUNLATER = {} UMF_RUNLATER = function(code) __RUNLATER[#__RUNLATER + 1] = code end
-local __UMFLOADED={["src/core/hook.lua"]=true,["src/util/detouring.lua"]=true,["src/core/hooks_base.lua"]=true,["src/core/hooks_extra.lua"]=true,["src/util/registry.lua"]=true,["src/util/debug.lua"]=true,["src/core/console_backend.lua"]=true,["src/core/_index.lua"]=true,["src/util/config.lua"]=true,["src/util/meta.lua"]=true,["src/util/timer.lua"]=true,["src/util/visual.lua"]=true,["src/util/xml.lua"]=true,["src/vector/quat.lua"]=true,["src/vector/transform.lua"]=true,["src/vector/vector.lua"]=true,["src/entities/entity.lua"]=true,["src/entities/body.lua"]=true,["src/entities/joint.lua"]=true,["src/entities/light.lua"]=true,["src/entities/location.lua"]=true,["src/entities/player.lua"]=true,["src/entities/screen.lua"]=true,["src/entities/shape.lua"]=true,["src/entities/trigger.lua"]=true,["src/entities/vehicle.lua"]=true,["src/animation/animation.lua"]=true,["src/animation/armature.lua"]=true,["src/tool/tool.lua"]=true,["src/tool/projectile.lua"]=true,["src/tdui/base.lua"]=true,["src/tdui/image.lua"]=true,["src/tdui/layout.lua"]=true,["src/tdui/panel.lua"]=true,["src/tdui/window.lua"]=true,["src/_index.lua"]=true,} UMF_SOFTREQUIRE = function(name) return __UMFLOADED[name] end
+-- UMF Package umf_complete_c v0.9.1 generated with:
+-- build.lua -n "umf_complete_c v0.9.1" dist/umf_complete_c.lua src
+--
+local __RUNLATER = {} local UMF_RUNLATER = function(code) __RUNLATER[#__RUNLATER + 1] = code end
+local __UMFLOADED = {["src/core/hook.lua"]=true,["src/util/detouring.lua"]=true,["src/core/hooks_base.lua"]=true,["src/core/hooks_extra.lua"]=true,["src/util/registry.lua"]=true,["src/util/debug.lua"]=true,["src/core/console_backend.lua"]=true,["src/core/_index.lua"]=true,["src/util/config.lua"]=true,["src/util/meta.lua"]=true,["src/util/constraint.lua"]=true,["src/util/resources.lua"]=true,["src/util/timer.lua"]=true,["src/util/visual.lua"]=true,["src/util/xml.lua"]=true,["src/vector/quat.lua"]=true,["src/vector/transform.lua"]=true,["src/vector/vector.lua"]=true,["src/entities/entity.lua"]=true,["src/entities/body.lua"]=true,["src/entities/joint.lua"]=true,["src/entities/light.lua"]=true,["src/entities/location.lua"]=true,["src/entities/player.lua"]=true,["src/entities/screen.lua"]=true,["src/entities/shape.lua"]=true,["src/entities/trigger.lua"]=true,["src/entities/vehicle.lua"]=true,["src/animation/animation.lua"]=true,["src/animation/armature.lua"]=true,["src/tool/tool.lua"]=true,["src/tdui/base.lua"]=true,["src/tdui/image.lua"]=true,["src/tdui/layout.lua"]=true,["src/tdui/panel.lua"]=true,["src/tdui/window.lua"]=true,["src/_index.lua"]=true,} local UMF_SOFTREQUIRE = function(name) return __UMFLOADED[name] end
 --src/core/hook.lua
 (function() ----------------
 -- Hook library
@@ -496,6 +499,17 @@ function util.shared_buffer( name, max )
 				return
 			end
 			return GetString( self._list_name .. (pos + index - len) % max )
+		end,
+		iterator = function( self )
+			local pos = GetInt( self._pos_name )
+			local len = math.min( pos, max )
+			return function( _, i )
+				i = (i or 0) + 1
+				if i >= len then
+					return
+				end
+				return i, GetString( self._list_name .. (pos + i - len) % max )
+			end
 		end,
 		get_g = function( self, index )
 			return GetString( self._list_name .. (index % max) )
@@ -1317,6 +1331,586 @@ if coreloaded then
 	end )
 end
  end)();
+--src/util/constraint.lua
+(function() ----------------
+-- Constraint Utilities
+-- @script util.constraint
+
+if not GetEntityHandle then
+	GetEntityHandle = function( handle )
+		return handle
+	end
+end
+
+constraint = {}
+_UMFConstraints = {}
+local solvers = {}
+
+function constraint.RunUpdate( dt )
+	local offset = 0
+	for i = 1, #_UMFConstraints do
+		local v = _UMFConstraints[i + offset]
+		if v.joint and IsJointBroken( v.joint ) then
+			table.remove( _UMFConstraints, i + offset )
+			offset = offset - 1
+		else
+			local result = { c = v }
+			for j = 1, #v.solvers do
+				local s = v.solvers[j]
+				solvers[s.type]( s, result )
+			end
+			if result.angvel then
+				local l = VecLength( result.angvel )
+				ConstrainAngularVelocity( v.parent, v.child, VecScale( result.angvel, 1 / l ), l * 10, 0, v.max_aimp )
+			end
+		end
+	end
+end
+
+local coreloaded = UMF_SOFTREQUIRE "src/core/_index.lua"
+if coreloaded then
+	hook.add( "base.update", "umf.constraint", constraint.RunUpdate )
+end
+
+local function find_index( t, v )
+	for i = 1, #t do
+		if t[i] == v then
+			return i
+		end
+	end
+end
+
+function constraint.Relative( val, body )
+	if type( val ) == "table" and val.handle or type( val ) == "number" then
+		body = val
+		val = nil
+	end
+	if type( val ) == "table" and val.body then
+		body = val.body
+		val = val.val
+	end
+	return { body = GetEntityHandle( body or 0 ), val = val }
+end
+
+local function resolve_point( relative_val )
+	return TransformToParentPoint( GetBodyTransform( relative_val.body ), relative_val.val )
+end
+
+local function resolve_axis( relative_val )
+	return TransformToParentVec( GetBodyTransform( relative_val.body ), relative_val.val )
+end
+
+local function resolve_orientation( relative_val )
+	return TransformToParentTransform( GetBodyTransform( relative_val.body ),
+	                                   Transform( Vec(), relative_val.val or Quat() ) )
+end
+
+local function resolve_transform( relative_val )
+	return TransformToParentTransform( GetBodyTransform( relative_val.body ), relative_val.val )
+end
+
+local constraint_meta = global_metatable( "constraint" )
+
+function constraint.New( parent, child, joint )
+	return setmetatable( {
+		parent = GetEntityHandle( parent ),
+		child = GetEntityHandle( child ),
+		joint = GetEntityHandle( joint ),
+		solvers = {},
+		tmp = {},
+		active = false,
+	}, constraint_meta )
+end
+
+function constraint_meta:Rebuild()
+	if not self.active then
+		return
+	end
+	local index = self.lastbuild and find_index( _UMFConstraints, self.lastbuild ) or (#_UMFConstraints + 1)
+	local c = {
+		parent = self.parent,
+		child = self.child,
+		joint = self.joint,
+		solvers = {},
+		max_aimp = self.max_aimp or math.huge,
+		max_vimp = self.max_vimp or math.huge,
+	}
+	for i = 1, #self.solvers do
+		c.solvers[i] = self.solvers[i]:Build() or { type = "none" }
+	end
+	self.lastbuild = c
+	_UMFConstraints[index] = c
+end
+
+function constraint_meta:Activate()
+	self.active = true
+	self:Rebuild()
+	return self
+end
+
+local colors = { { 1, 0, 0 }, { 0, 1, 0 }, { 0, 0, 1 }, { 0, 1, 1 }, { 1, 0, 1 }, { 1, 1, 0 }, { 1, 1, 1 } }
+function constraint_meta:DrawDebug( c )
+	c = c or GetBodyTransform( self.child ).pos
+	for i = 1, #self.solvers do
+		local col = colors[(i - 1) % #colors + 1]
+		self.solvers[i]:DrawDebug( c, col[1], col[2], col[3] )
+	end
+end
+
+function constraint_meta:LimitAngularVelocity( maxangvel )
+	if self.tmp.asolver then
+		self.tmp.asolver.max_avel = maxangvel
+	else
+		self.tmp.max_avel = maxangvel
+	end
+	return self
+end
+
+function constraint_meta:LimitAngularImpulse( maxangimpulse )
+	self.max_aimp = maxangimpulse
+	return self
+end
+
+function constraint_meta:LimitVelocity( maxvel )
+	if self.tmp.vsolver then
+		self.tmp.vsolver.max_vel = maxvel
+	else
+		self.tmp.max_vel = maxvel
+	end
+	return self
+end
+
+function constraint_meta:LimitImpulse( maximpulse )
+	self.max_vimp = maximpulse
+	return self
+end
+
+--------------------------------
+--         Solver Base        --
+--------------------------------
+
+local solver_meta = global_metatable( "constraint_solver" )
+
+function solver_meta:Build()
+end
+function solver_meta:DrawDebug()
+end
+
+function solvers:none()
+end
+
+--------------------------------
+--    Rotation Axis Solvers   --
+--------------------------------
+
+function constraint_meta:ConstrainRotationAxis( axis, body )
+	self.tmp.vsolver = nil
+	self.tmp.asolver = nil
+	self.tmp.axis = constraint.Relative( axis, body )
+	return self
+end
+
+local solver_ra_sphere_meta = global_metatable( "constraint_ra_sphere_solver", "constraint_solver" )
+
+function constraint_meta:OnSphere( quat, body )
+	local s = setmetatable( {}, solver_ra_sphere_meta )
+	s.axis = self.tmp.axis
+	s.quat = constraint.Relative( quat, body )
+	s.max_avel = self.tmp.max_avel
+	self.tmp.vsolver = nil
+	self.tmp.asolver = s
+	self.solvers[#self.solvers + 1] = s
+	return self
+end
+
+function constraint_meta:AboveLatitude( min )
+	self.tmp.asolver.min_lat = min
+	return self
+end
+
+function constraint_meta:BelowLatitude( max )
+	self.tmp.asolver.max_lat = max
+	return self
+end
+
+function constraint_meta:WithinLatitudes( min, max )
+	return self:AboveLatitude( min ):BelowLatitude( max )
+end
+
+function constraint_meta:WithinLongitudes( min, max )
+	self.tmp.asolver.min_lng = min
+	self.tmp.asolver.max_lng = max
+	return self
+end
+
+function solver_ra_sphere_meta:DrawDebug( c, r, g, b )
+	local tr = resolve_orientation( self.quat )
+	tr.pos = c
+	local axis = VecNormalize( resolve_axis( self.axis ) )
+
+	local start_lng = self.min_lng or 0
+	local len_lng = self.max_lng and (start_lng - self.max_lng) % 360
+	if self.min_lat then
+		visual.drawpolygon( TransformToParentTransform( tr, Transform( Vec( 0, math.sin( math.rad( self.min_lat ) ), 0 ) ) ),
+		                    math.cos( math.rad( self.min_lat ) ), -start_lng, 40, { arc = len_lng, r = r, g = g, b = b } )
+	end
+	if self.max_lat then
+		visual.drawpolygon( TransformToParentTransform( tr, Transform( Vec( 0, math.sin( math.rad( self.max_lat ) ), 0 ) ) ),
+		                    math.cos( math.rad( self.max_lat ) ), -start_lng, 40, { arc = len_lng, r = r, g = g, b = b } )
+	end
+	if self.min_lng then
+		local start_lat = self.min_lat or 360
+		local len_lat = start_lat - (self.max_lat or 0)
+		visual.drawpolygon( TransformToParentTransform( tr, Transform( Vec(), QuatEuler( 0, 180 - self.min_lng, 90 ) ) ), 1,
+		                    180 - start_lat, 20, { arc = len_lat, r = r, g = g, b = b } )
+		visual.drawpolygon( TransformToParentTransform( tr, Transform( Vec(), QuatEuler( 0, 180 - self.max_lng, 90 ) ) ), 1,
+		                    180 - start_lat, 20, { arc = len_lat, r = r, g = g, b = b } )
+	end
+
+	DrawLine( tr.pos, VecAdd( tr.pos, axis ), r, g, b )
+end
+
+function solver_ra_sphere_meta:Build()
+	local quat = constraint.Relative( self.quat )
+	local lng
+	if self.min_lng then
+		local mid = (self.max_lng + self.min_lng) / 2
+		if self.max_lng < self.min_lng then
+			mid = mid + 180
+		end
+		lng = math.acos( math.cos( math.rad( self.min_lng - mid ) ) )
+		quat.val = QuatRotateQuat( QuatAxisAngle( QuatRotateVec( quat.val or Quat(), Vec( 0, 1, 0 ) ), -mid ),
+		                           quat.val or Quat() )
+	end
+	local axis = constraint.Relative( self.axis )
+	axis.val = VecNormalize( axis.val )
+	return {
+		type = "ra_sphere",
+		axis = axis,
+		quat = quat,
+		lng = lng,
+		min_lat = self.min_lat and math.rad( self.min_lat ) or nil,
+		max_lat = self.max_lat and math.rad( self.max_lat ) or nil,
+		max_avel = self.max_avel,
+	}
+end
+
+function solvers:ra_sphere( result )
+	local axis = resolve_axis( self.axis )
+	local tr = resolve_orientation( self.quat )
+	local local_axis = TransformToLocalVec( tr, axis )
+	local resv
+	local lat = math.asin( local_axis[2] )
+	if self.min_lat and lat < self.min_lat then
+		local c = VecNormalize( VecCross( Vec( 0, -1, 0 ), local_axis ) )
+		resv = VecScale( c, lat - self.min_lat )
+	elseif self.max_lat and lat > self.max_lat then
+		local c = VecNormalize( VecCross( Vec( 0, -1, 0 ), local_axis ) )
+		resv = VecScale( c, lat - self.max_lat )
+	end
+	if self.lng then
+		local l = math.sqrt( local_axis[1] ^ 2 + local_axis[3] ^ 2 )
+		if l > 0.05 then
+			local n = math.acos( local_axis[3] / l ) - self.lng
+			if n < 0 then
+				local c = VecNormalize( VecCross( VecCross( Vec( 0, 1, 0 ), local_axis ), local_axis ) )
+				resv = VecAdd( resv, VecScale( c, local_axis[1] > 0 and -n or n ) )
+				-- local c = VecNormalize( VecCross( Vec( 0, 0, -1 ), local_axis ) )
+				-- resv = VecAdd( resv, VecScale( c, -n ) )
+			end
+		end
+	end
+	if resv then
+		if self.max_avel then
+			local len = VecLength( resv )
+			if len > self.max_avel then
+				resv = VecScale( resv, self.max_avel / len )
+			end
+		end
+		result.angvel = VecAdd( result.angvel, TransformToParentVec( tr, resv ) )
+	end
+end
+
+--------------------------------
+--     Orientation Solvers    --
+--------------------------------
+
+function constraint_meta:ConstrainOrientation( quat, body )
+	self.tmp.vsolver = nil
+	self.tmp.asolver = nil
+	self.tmp.quat = constraint.Relative( quat, body )
+	return self
+end
+
+local solver_quat_quat_meta = global_metatable( "constraint_quat_quat_solver", "constraint_solver" )
+
+function constraint_meta:ToOrientation( quat, body )
+	local s = setmetatable( {}, solver_quat_quat_meta )
+	s.quat1 = self.tmp.quat
+	s.quat2 = constraint.Relative( quat, body )
+	s.max_avel = self.tmp.max_avel
+	self.tmp.vsolver = nil
+	self.tmp.asolver = s
+	self.solvers[#self.solvers + 1] = s
+	return self
+end
+
+local cdirections = { Vec( 1, 0, 0 ), Vec( 0, 1, 0 ), Vec( 0, 0, 1 ) }
+function solver_quat_quat_meta:DrawDebug( c, r, g, b )
+	local tr1 = resolve_orientation( self.quat1 )
+	tr1.pos = c
+	local tr2 = resolve_orientation( self.quat2 )
+	tr2.pos = c
+	for i = 1, #cdirections do
+		local dir = cdirections[i]
+		local p1 = TransformToParentPoint( tr1, dir )
+		local p2 = TransformToParentPoint( tr2, dir )
+		DrawLine( tr1.pos, p1, r, g, b )
+		DrawLine( tr1.pos, p2, r, g, b )
+		DrawLine( p1, p2, r, g, b )
+	end
+end
+
+function solver_quat_quat_meta:Build()
+	return { type = "quat_quat", quat1 = self.quat1, quat2 = self.quat2, max_avel = self.max_avel or math.huge }
+end
+
+function solvers:quat_quat( result )
+	ConstrainOrientation( result.c.child, result.c.parent, resolve_orientation( self.quat1 ).rot,
+	                      resolve_orientation( self.quat2 ).rot, self.max_avel, result.c.max_aimp )
+end
+
+--------------------------------
+--      Position Solvers      --
+--------------------------------
+
+function constraint_meta:ConstrainPoint( point, body )
+	self.tmp.vsolver = nil
+	self.tmp.asolver = nil
+	self.tmp.point = constraint.Relative( point, body )
+	return self
+end
+
+local solver_point_point_meta = global_metatable( "constraint_point_point_solver", "constraint_solver" )
+
+function constraint_meta:ToPoint( point, body )
+	local s = setmetatable( {}, solver_point_point_meta )
+	s.point1 = self.tmp.point
+	s.point2 = constraint.Relative( point, body )
+	s.max_vel = self.tmp.max_vel
+	self.tmp.vsolver = s
+	self.tmp.asolver = nil
+	self.solvers[#self.solvers + 1] = s
+	return self
+end
+
+function solver_point_point_meta:DrawDebug( c, r, g, b )
+	local point1 = resolve_point( self.point1 )
+	local point2 = resolve_point( self.point2 )
+	DebugCross( point1, r, g, b )
+	DebugCross( point2, r, g, b )
+	DrawLine( point1, point2, r, g, b )
+end
+
+function solver_point_point_meta:Build()
+	return { type = "point_point", point1 = self.point1, point2 = self.point2, max_vel = self.max_vel or math.huge }
+end
+
+function solvers:point_point( result )
+	ConstrainPosition( result.c.child, result.c.parent, resolve_point( self.point1 ), resolve_point( self.point2 ),
+	                   self.max_vel, result.c.max_vimp )
+end
+
+local solver_point_space_meta = global_metatable( "constraint_point_space_solver", "constraint_solver" )
+
+function constraint_meta:ToSpace( transform, body )
+	local s = setmetatable( {}, solver_point_space_meta )
+	s.point = self.tmp.point
+	s.transform = constraint.Relative( transform, body )
+	s.max_vel = self.tmp.max_vel
+	s.constraints = {}
+	self.tmp.vsolver = s
+	self.tmp.asolver = nil
+	self.solvers[#self.solvers + 1] = s
+	return self
+end
+
+function constraint_meta:WithinBox( center, min, max )
+	local rcenter = constraint.Relative( self.tmp.vsolver.transform )
+	rcenter.val = TransformToParentTransform( rcenter.val, center )
+	table.insert( self.tmp.vsolver.constraints, { type = "box", center = rcenter, min = min, max = max } )
+	return self
+end
+
+function constraint_meta:WithinSphere( center, radius )
+	local rcenter = constraint.Relative( self.tmp.vsolver.transform )
+	rcenter.val = TransformToParentPoint( rcenter.val, center )
+	table.insert( self.tmp.vsolver.constraints, { type = "sphere", center = rcenter, radius = radius } )
+	return self
+end
+
+function constraint_meta:AbovePlane( transform )
+	local rcenter = constraint.Relative( self.tmp.vsolver.transform )
+	rcenter.val = TransformToParentTransform( rcenter.val, transform )
+	table.insert( self.tmp.vsolver.constraints, { type = "plane", center = rcenter } )
+	return self
+end
+
+function solver_point_space_meta:DrawDebug( c, r, g, b )
+	local point = resolve_point( self.point )
+	for i = 1, #self.constraints do
+		local c = self.constraints[i]
+		if c.type == "plane" then
+			local tr = resolve_transform( c.center )
+			local lp = TransformToLocalPoint( tr, point )
+			lp[2] = 0
+			tr.pos = TransformToParentPoint( tr, lp )
+			visual.drawpolygon( tr, 1.414, 45, 4, { r = r, g = g, b = b } )
+		elseif c.type == "box" then
+			local tr = resolve_transform( c.center )
+			visual.drawbox( tr, c.min, c.max, { r = r, g = g, b = b } )
+		elseif c.type == "sphere" then
+			local tr = Transform( resolve_point( c.center ), Quat() )
+			visual.drawwiresphere( tr, c.radius, 32, { r = r, g = g, b = b } )
+		end
+	end
+end
+
+function solver_point_space_meta:Build()
+	local consts = {}
+	for i = 1, #self.constraints do
+		local c = self.constraints[i]
+		if c.type == "box" then
+			local rcenter = constraint.Relative( c.center )
+			rcenter.val.pos = TransformToParentPoint( rcenter.val, VecScale( VecAdd( c.min, c.max ), 0.5 ) )
+			consts[i] = { type = "box", center = rcenter, size = VecScale( VecSub( c.max, c.min ), 0.5 ) }
+		else
+			consts[i] = c
+		end
+	end
+	return { type = "point_space", point = self.point, constraints = consts, max_vel = self.max_vel or math.huge }
+end
+
+function solvers:point_space( result )
+	local point = resolve_point( self.point )
+	local resv
+	for i = 1, #self.constraints do
+		local c = self.constraints[i]
+		if c.type == "plane" then
+			local tr = resolve_transform( c.center )
+			local lp = TransformToLocalPoint( tr, point )
+			if lp[2] < 0 then
+				resv = VecAdd( resv, TransformToParentVec( tr, Vec( 0, lp[2], 0 ) ) )
+			end
+		elseif c.type == "box" then
+			local tr = resolve_transform( c.center )
+			local lp = TransformToLocalPoint( tr, point )
+			local sx, sy, sz = c.size[1], c.size[2], c.size[3]
+			local nlp = Vec( lp[1] < -sx and lp[1] + sx or lp[1] > sx and lp[1] - sx or 0,
+			                 lp[2] < -sy and lp[2] + sy or lp[2] > sy and lp[2] - sy or 0,
+			                 lp[3] < -sz and lp[3] + sz or lp[3] > sz and lp[3] - sz or 0 )
+			if nlp[1] ~= 0 or nlp[2] ~= 0 or nlp[3] ~= 0 then
+				resv = VecAdd( resv, TransformToParentVec( tr, nlp ) )
+			end
+		elseif c.type == "sphere" then
+			local center = resolve_point( c.center )
+			local diff = VecSub( point, center )
+			local len = VecLength( diff )
+			if len > c.radius then
+				resv = VecAdd( resv, VecScale( diff, (len - c.radius) / len ) )
+			end
+		end
+	end
+	if resv then
+		local len = VecLength( resv )
+		resv = VecScale( resv, 1 / len )
+		if self.max_vel and len > self.max_vel then
+			len = self.max_vel
+		end
+		ConstrainVelocity( result.c.parent, result.c.child, point, resv, len * 10, 0, result.c.max_vimp )
+	end
+end
+
+ end)();
+--src/util/resources.lua
+(function() ----------------
+-- Resources Utilities
+-- @script util.resources
+
+util = util or {}
+
+local mod
+do
+	local stack = util.stacktrace()
+	local function findmods( file )
+		local matches = {}
+		while file and #file > 0 do
+			matches[#matches + 1] = file
+			file = file:match( "^(.-)/[^/]*$" )
+		end
+
+		local found
+		for _, key in ipairs( ListKeys( "mods.available" ) ) do
+			local path = GetString( "mods.available." .. key .. ".path" )
+			for _, subpath in ipairs( matches ) do
+				if path:sub( -#subpath ) == subpath then
+					if found then
+						return
+					end
+					found = key
+					break
+				end
+			end
+		end
+		return found
+	end
+	for i = 1, #stack do
+		if stack[i] ~= "[C]:?" then
+			local t = stack[i]:match( "%[string \"%.%.%.(.*)\"%]:%d+" ) or stack[i]:match( "%.%.%.(.*):%d+" )
+			if t then
+				local found = findmods( t )
+				if found then
+					mod = found
+					MOD = found
+					break
+				end
+			end
+		end
+	end
+end
+
+--- Resolves a given mod path to an absolute path.
+---
+---@param path string
+---@return string path Absolute path
+function util.resolve_path( path )
+	-- TODO: support relative paths (relative to the current file)
+	-- TODO: return multiple matches if applicable
+	local replaced, n = path:gsub( "^MOD/", GetString( "mods.available." .. mod .. ".path" ) .. "/" )
+	if n == 0 then
+		replaced, n = path:gsub( "^LEVEL/", GetString( "game.levelpath" ):sub( 1, -5 ) .. "/" )
+	end
+	if n == 0 then
+		replaced, n = path:gsub( "^MODS/([^/]+)", function( mod )
+			return GetString( "mods.available." .. mod .. ".path" )
+		end )
+	end
+	if n == 0 then
+		return path
+	end
+	return replaced
+end
+
+--- Load a lua file from its mod path.
+---
+---@param path string
+---@return function
+---@return string error_message
+function util.load_lua_resource( path )
+	return loadfile( util.resolve_path( path ) )
+end
+
+ end)();
 --src/util/timer.lua
 (function() ----------------
 -- Timer Utilities
@@ -1647,35 +2241,40 @@ if DrawSprite then
 	---@param sides number
 	---@param info table
 	function visual.drawpolygon( transform, radius, rotation, sides, info )
-		local points = {}
-		local iteration = 1
-		local pow, sqrt, sin, cos = math.pow, math.sqrt, math.sin, math.cos
-		local r, g, b, a
+		sides = sides or 4
+		radius = radius or 1
+
+		local offset, interval = math.rad( rotation or 0 ), 2 * math.pi / sides
+		local arc = false
+		local r, g, b, a = 1, 1, 1, 1
 		local DrawFunction = DrawLine
 
-		radius = sqrt( 2 * pow( radius, 2 ) ) or sqrt( 2 )
-		rotation = rotation or 0
-		sides = sides or 4
-
 		if info then
-			r = info.r and info.r or 1
-			g = info.g and info.g or 1
-			b = info.b and info.b or 1
-			a = info.a and info.a or 1
-			DrawFunction = info.DrawFunction ~= nil and info.DrawFunction or (info.writeZ == false and DebugLine or DrawLine)
+			r = info.r or r
+			g = info.g or g
+			b = info.b or b
+			a = info.a or a
+			if info.arc then
+				arc = true
+				interval = interval * info.arc / 360
+			end
+			DrawFunction = info.DrawFunction or (info.writeZ == false and DebugLine or DrawLine)
 		end
 
-		for v = 0, 360, 360 / sides do
-			points[iteration] = TransformToParentPoint( transform, Vec( sin( (v + rotation) * degreeToRadian ) * radius, 0,
-			                                                            cos( (v + rotation) * degreeToRadian ) * radius ) )
-			points[iteration + 1] = TransformToParentPoint( transform,
-			                                                Vec( sin( ((v + 360 / sides) + rotation) * degreeToRadian ) * radius,
-			                                                     0,
-			                                                     cos( ((v + 360 / sides) + rotation) * degreeToRadian ) * radius ) )
-			if iteration > 2 then
-				DrawFunction( points[iteration], points[iteration + 1], r, g, b, a )
+		local points = {}
+		for i = 0, sides - 1 do
+			points[i + 1] = TransformToParentPoint( transform, Vec( math.sin( offset + i * interval ) * radius, 0,
+			                                                        math.cos( offset + i * interval ) * radius ) )
+			if i > 0 then
+				DrawFunction( points[i], points[i + 1], r, g, b, a )
 			end
-			iteration = iteration + 2
+		end
+		if arc then
+			points[#points + 1] = TransformToParentPoint( transform, Vec( math.sin( offset + sides * interval ) * radius, 0,
+			                                                              math.cos( offset + sides * interval ) * radius ) )
+			DrawFunction( points[#points - 1], points[#points], r, g, b, a )
+		else
+			DrawFunction( points[#points], points[1], r, g, b, a )
 		end
 
 		return points
@@ -1815,6 +2414,34 @@ if DrawSprite then
 		return points
 	end
 
+	--- Draws a wireframe sphere.
+	---
+	---@param transform Transformation
+	---@param radius number
+	---@param points number
+	---@param info table
+	function visual.drawwiresphere( transform, radius, points, info )
+		radius = radius or 1
+		points = points or 32
+		if not info or not info.nolines then
+			local tr_r = TransformToParentTransform( transform, Transform( Vec(), QuatEuler( 90, 0, 0 ) ) )
+			local tr_f = TransformToParentTransform( transform, Transform( Vec(), QuatEuler( 0, 0, 90 ) ) )
+			visual.drawpolygon( transform, radius, 0, points, info )
+			visual.drawpolygon( tr_r, radius, 0, points, info )
+			visual.drawpolygon( tr_f, radius, 0, points, info )
+		end
+
+		local cam = info and info.target or GetCameraTransform().pos
+		local diff = VecSub( transform.pos, cam )
+		local len = VecLength( diff )
+		if len < radius then
+			return
+		end
+		local a = math.pi / 2 - math.asin( radius / len )
+		local vtr = Transform( VecAdd( transform.pos, VecScale( diff, -math.cos( a ) / len ) ),
+		                       QuatRotateQuat( QuatLookAt( transform.pos, cam ), QuatEuler( 90, 0, 0 ) ) )
+		visual.drawpolygon( vtr, radius * math.sin( a ), 0, points, info )
+	end
 end
 
  end)();
@@ -4569,7 +5196,7 @@ Armature {
 function LoadArmatureFromXML( xml, parts, scale ) -- Example below
 	scale = scale or 1
 	local dt = ParseXML( xml )
-	assert( dt.type == "prefab" and dt.children[1] and dt.children[1].type == "group" )
+	assert( (dt.type == "prefab" and dt.children[1] and dt.children[1].type == "group") or dt.type == "group", "Invalid Tool XML" )
 	local shapes = {}
 	local offsets = {}
 	for i = 1, #parts do
@@ -4618,7 +5245,7 @@ function LoadArmatureFromXML( xml, parts, scale ) -- Example below
 		end
 		return t
 	end
-	local bones = translatebone( dt.children[1] )[1]
+	local bones = translatebone( dt.type == "prefab" and dt.children[1] or dt )[1]
 	bones.transform = Transform( Vec(), QuatEuler( 0, 0, 0 ) )
 	bones.name = "root"
 
@@ -5139,6 +5766,16 @@ hook.add( "api.mouse.wheel", "api.tool_loader", function( ds )
 	end
 end )
 
+hook.add( "base.update", "api.tool_loader", function( dt )
+	local cur = GetString( "game.player.tool" )
+	local tool = extra_tools[cur]
+	if tool then
+		if tool.Update then
+			softassert( pcall( tool.Update, tool, dt ) )
+		end
+	end
+end )
+
 hook.add( "base.tick", "api.tool_loader", function( dt )
 	local cur = GetString( "game.player.tool" )
 
@@ -5233,61 +5870,6 @@ hook.add( "api.mouse.released", "api.tool_loader", function( button )
 	local event = button == "lmb" and "LeftClickReleased" or "RightClickReleased"
 	if tool and tool[event] and istoolactive() then
 		softassert( pcall( tool[event], tool ) )
-	end
-end )
-
- end)();
---src/tool/projectile.lua
-(function() _UMFProjectiles = {}
-
-local projtype_meta = global_metatable( "projectile_type" )
-local types = {}
-function ProjectileType( id )
-	types[id] = setmetatable( { id = id }, projtype_meta )
-	return types[id]
-end
-
-function projtype_meta:Create( pos, vel )
-	local t = { pos = pos, vel = vel, type = self.id }
-	_UMFProjectiles[#_UMFProjectiles + 1] = t
-	return t
-end
-
-function projtype_meta:Update( projectile, dt )
-	if self.gravity then
-		projectile.vel = VecAdd( projectile.vel, VecScale( self.gravity, dt ) )
-	end
-	local dir = VecNormalize( projectile.vel )
-	local len = VecLength( projectile.vel ) * dt
-	local pos = projectile.pos
-	local hit, dist, normal, shape = QueryRaycast( pos, dir, len, self.radius or 0, self.ignoreglass or false )
-	if hit then
-		self:Hit( VecAdd( pos, VecScale( dir, dist ) ), normal, shape )
-		return true
-	end
-	projectile.pos = VecAdd( pos, VecScale( projectile.vel, dt ) )
-	self:Draw( projectile, pos, dt )
-end
-
-function projtype_meta:Hit( pos, normal, shape )
-end
-
-function projtype_meta:Draw( projectile, previouspos, dt )
-end
-
-hook.add( "base.tick", "api.projectiles", function( dt )
-	local removal
-	for i = 1, #_UMFProjectiles do
-		local p = _UMFProjectiles[i]
-		if types[p.type]:Update( p, dt ) then
-			removal = removal or {}
-			removal[#removal + 1] = i
-		end
-	end
-	if removal then
-		for i = 1, #removal do
-			table.remove( _UMFProjectiles, removal[i] + 1 - i )
-		end
 	end
 end )
 
@@ -5505,7 +6087,6 @@ TDUI.Panel = TDUI {
 					local name = self[i] == TDUI.Slot and "default" or self[i].__SLOT
 					result = {}
 					local content
-					print( "creating func for " .. name )
 					slots[name] = function( c )
 						content = c
 						self:__RefreshDynamic( id )
