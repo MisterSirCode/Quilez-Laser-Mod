@@ -1,10 +1,11 @@
 <group id_="473592032" open_="true" name="laser" pos="0.0 0.0 0.0" rot="0.0 0.0 0.0">
-    <group id_="2048256128" open_="true" name="base" pos="0.0 0.0 0.0">
-        <vox id_="1640400640" pos="-0.025 -0.175 0.175" rot="0.0 0.0 0.0" file="MOD/assets/laser.vox" object="laserbase" scale="0.5"/>
-    </group>
-    <group id_="1912784896" open_="true" name="ring" pos="0.0 0.0 -0.25" rot="0.0 0.0 0.0">
-        <vox id_="2089677312" pos="-0.025 -0.325 0.025" rot="0.0 0.0 0.0" file="MOD/assets/laser.vox" object="laserring" scale="0.5"/>
-    </group>
-    <location id_="1100482176" name="nozzle" pos="-0.0 0.0 0.175"/>
+	<group id_="2048256128" open_="true" name="base" pos="0.0 0.0 0.0">
+		<vox id_="1640400640" pos="-0.025 -0.175 0.175" rot="0.0 0.0 0.0" file="MOD/assets/laser.vox" object="laserbase" scale="0.5"/>
+	</group>
+	<group id_="1912784896" open_="true" name="ring" pos="0.0 0.0 -0.25" rot="0.0 0.0 0.0">
+		<vox id_="2089677312" pos="-0.025 -0.325 0.025" rot="0.0 0.0 0.0" file="MOD/assets/laser.vox" object="laserring" scale="0.5"/>
+	</group>
+	<location id_="1100482176" name="nozzle" pos="0.0 0.0 0.275"/>
+	<location id_="2067721472" name="tip" pos="0.0 0.0 -0.425"/>
 </group>
 

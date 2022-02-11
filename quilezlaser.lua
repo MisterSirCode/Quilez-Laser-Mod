@@ -3,6 +3,11 @@ local laserColors = {
 	{0.6, 0.3, 1},
 	{1, 0.6, 0.3}
 }
+local brightness = {
+    {8, 5, 5},
+    {5, 6, 8},
+    {8, 6, 5}
+}
 local laserNames = {
 	"Classic Quilez Plasma Laser",
 	"Pressurized Cold Plasma Laser",
@@ -61,40 +66,6 @@ local tool = {
 -- 	return currentLength + length, hitPoint, hitBody, hitShape
 -- end
 
-function visual.drawline( sprite, source, destination, info )
-    local r, g, b, a
-    local writeZ, additive = true, false
-    local target = GetCameraTransform().pos
-    local DrawFunction = DrawLine
-    local width = 0.03
-    if info then
-        r = info.r and info.r or 1
-        g = info.g and info.g or 1
-        b = info.b and info.b or 1
-        a = info.a and info.a or 1
-        width = info.width or width
-        target = info.target or target
-        if info.writeZ ~= nil then
-            writeZ = info.writeZ
-        end
-        if info.additive ~= nil then
-            additive = info.additive
-        end
-        DrawFunction = info.DrawFunction ~= nil and info.DrawFunction or (info.writeZ == false and DebugLine or DrawLine)
-    end
-    if sprite then
-        local middle = VecScale( VecAdd( source, destination ), .5 )
-        local len = VecLength( VecSub( source, destination ) )
-        local transform = Transform( middle, QuatRotateQuat( QuatLookAt( source, destination ), QuatEuler( -90, 0, 0 ) ) )
-        local target_local = TransformToLocalPoint( transform, target )
-        target_local[2] = 0
-        local transform_fixed = TransformToParentTransform( transform, Transform( nil, QuatLookAt( target_local, nil ) ) )
-        DrawSprite( sprite, transform_fixed, width, len, r, g, b, a, writeZ, additive )
-    else
-        DrawFunction( source, destination, r, g, b, a );
-    end
-end
-
 function tool:Initialize()
 	laserReady = 0
 	laserFireTime = 0
@@ -113,7 +84,7 @@ function tool:Animate()
     local ar = self.armature
     local target = PLAYER:GetCamera():Raycast(500, -1)
     local TinT = self:GetPredictedTransform():ToLocal(target.hitpos)
-    ar:SetBoneTransform("laser", Transform(Vec(0, 0, 0), QuatLookAt(Vec(0, 0, 0), TinT)))
+    ar:SetBoneTransform("root", Transform(Vec(0, 0, 0), QuatLookAt(Vec(0, 0, 0), TinT)))
 end
 
 function tool:Deploy()
@@ -143,28 +114,28 @@ function tool:Tick()
     SetToolTransform(toolpos)
     local target = PLAYER:GetCamera():Raycast(500, -1)
 
-    -- PointLight(target.hitpos, lc[1], lc[2], lc[3], 1)
-    -- DebugLine(target.hitpos, self:GetBoneGlobalTransform('laserring').pos, 0, 1, 0, 1)
-    -- DebugLine(target.hitpos, self:GetBoneGlobalTransform('root'), 0, 1, 0, 1)
-    local col = laserColors[GetInt("savegame.mod.laserMode")]
-    visual.drawline(laserSprite, self:GetBoneGlobalTransform('nozzle').pos, target.hitpos, {
-        r = col[1], 
-        g = col[2], 
-        b = col[3],
-        additive = true,
-        width = 0.5
-    });
-
     if InputDown('lmb') then
-        -- local dir = TransformToParentVec(tlt, Vec(0, 0, -1))
-        -- local length, hitPoint, hitBody, hitShape = shootLaser(0, shapes, origin, dir, 0, {})
-        -- if length ~= laserDist then
-        --     laserHitScale = 1
-        --     laserDist = length
-        -- end
-        -- laserHitScale = math.max(0.0, laserHitScale - dt)
-        -- local velocity = VecNormalize(VecSub(target.hitpos, toolPos))
-        -- SpawnParticle(toolPos, VecScale(velocity, 25), 1)
+        local col = laserColors[GetInt("savegame.mod.laserMode")]
+        local brt = brightness[GetInt("savegame.mod.laserMode")]
+        local newCol = {};
+        PointLight(target.hitpos, col[1], col[2], col[3], 1)
+        PointLight(target.hitpos, brt[1], brt[2], brt[3], 0.01)
+        PointLight(self:GetBoneGlobalTransform('tip').pos, newCol[1], newCol[2], newCol[3], 1)
+        DebugCross(self:GetBoneGlobalTransform('tip').pos)
+        visual.drawline(laserSprite, self:GetBoneGlobalTransform('nozzle').pos, target.hitpos, {
+            r = col[1], 
+            g = col[2], 
+            b = col[3],
+            additive = true,
+            width = 0.5
+        })
+        visual.drawline(laserSprite, self:GetBoneGlobalTransform('nozzle').pos, target.hitpos, {
+            r = brt[1], 
+            g = brt[2], 
+            b = brt[3],
+            additive = true,
+            width = 0.05 + math.random() * 0.01
+        })
     end
 end
 
@@ -178,11 +149,11 @@ tool.model = {
         <group id_="1912784896" open_="true" name="ring" pos="0.0 0.0 -0.25" rot="0.0 0.0 0.0">
             <vox id_="2089677312" pos="-0.025 -0.325 0.025" rot="0.0 0.0 0.0" file="MOD/assets/laser.vox" object="laserring" scale="0.5"/>
         </group>
-        <location id_="1100482176" name="nozzle" pos="-0.0 0.0 0.175"/>
+        <location id_="1100482176" name="nozzle" pos="0.0 0.0 0.275"/>
+        <location id_="2067721472" name="tip" pos="0.0 0.0 -0.425"/>
     </group>
 </prefab>
     ]],
-
     objects = {
         {'laserbase', Vec(7, 12, 7)}, -- these sizes were swapped (and the 12 was a 20)
         {'laserring', Vec(13, 1, 13)},
