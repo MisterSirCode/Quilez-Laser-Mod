@@ -19,52 +19,70 @@ local tool = {
     group = 6,
     ammo = 10000
 }
+local maxDist = 1000
 
--- function shootLaser(body, shape, origin, dir, currentLength, deflectorsHit)
--- 	QueryRequire("physical")
--- 	if shape ~= 0 then
--- 		QueryRejectShape(shape)
--- 	end
--- 	if body ~= 0 then
--- 		QueryRejectBody(body)
--- 	end
--- 	local hit, hitDist, hitNormal, hitShape = QueryRaycast(origin, dir, MAX_DIST, 0.0, true)
--- 	local length = MAX_DIST
--- 	if hit then
--- 		length = hitDist
--- 	end
--- 	local hitPoint = VecAdd(origin, VecScale(dir, length))
--- 	local t = Transform(VecLerp(origin, hitPoint, 0.5))
--- 	local xAxis = VecNormalize(VecSub(hitPoint, origin))
--- 	local zAxis = VecNormalize(VecSub(origin, GetCameraTransform().pos))
--- 	t.rot = QuatAlignXZ(xAxis, zAxis)
--- 	DrawSprite(laserSprite, t, length, 0.05+math.random()*0.01, 8, 4, 4, 1, true, true)
--- 	local col = LASER_COLORS[GetInt("savegame.mod.laserMode")]
--- 	DrawSprite(laserSprite, t, length, 0.5, col[1], col[2], col[3], 1, true, true)
--- 	local hitBody = GetShapeBody(hitShape)
--- 	if HasTag(hitBody, "mirror2") and currentLength < MAX_DIST then
--- 		local alreadyHit = false
--- 		for i=1, #deflectorsHit do
--- 			if deflectorsHit[i] == hitBody then
--- 				alreadyHit = true
--- 				break
--- 			end
--- 		end
--- 		if not alreadyHit then
--- 			deflectorsHit[#deflectorsHit+1] = hitBody
--- 			local t = GetBodyTransform(hitBody)
--- 			local refDir = TransformToParentVec(t, Vec(0, 0, 1))
--- 			SetShapeEmissiveScale(hitShape, 1)
--- 			return shootLaser(hitBody, hitShape, t.pos, refDir, currentLength + length, deflectorsHit)
--- 		end
--- 	end
--- 	local hitBody = GetShapeBody(hitShape)
--- 	if HasTag(hitBody, "mirror") and currentLength < MAX_DIST then
--- 		local refDir = VecSub(dir, VecScale(hitNormal, VecDot(hitNormal, dir)*2))
--- 		return shootLaser(hitBody, hitShape, hitPoint, refDir, currentLength + length, deflectorsHit)
--- 	end
--- 	return currentLength + length, hitPoint, hitBody, hitShape
--- end
+function updateLaserMode()
+	SetInt("savegame.mod.laserMode", GetInt("savegame.mod.laserMode") + 1)
+	if (GetInt("savegame.mod.laserMode") > #laserNames) then
+		SetInt("savegame.mod.laserMode", 1)
+	end
+end
+
+function shootLaser(body, shape, origin, dir, currentLength, deflectorsHit)
+	QueryRequire("physical")
+	if shape ~= 0 then
+		QueryRejectShape(shape)
+	end
+	if body ~= 0 then
+		QueryRejectBody(body)
+	end
+	local hit, hitDist, hitNormal, hitShape = QueryRaycast(origin, dir, maxDist, 0.0, true)
+	local length = maxDist
+	if hit then
+		length = hitDist
+	end
+	local hitPoint = VecAdd(origin, VecScale(dir, length))
+	local t = Transform(VecLerp(origin, hitPoint, 0.5))
+	local xAxis = VecNormalize(VecSub(hitPoint, origin))
+	local zAxis = VecNormalize(VecSub(origin, GetCameraTransform().pos))
+	t.rot = QuatAlignXZ(xAxis, zAxis)
+	DrawSprite(laserSpriteOg, t, length, 0.05 + math.random() * 0.01, 8, 4, 4, 1, true, true)
+	local col = laserColors[GetInt("savegame.mod.laserMode")]
+	DrawSprite(laserSpriteOg, t, length, 0.5, col[1], col[2], col[3], 1, true, true)
+	local hitBody = GetShapeBody(hitShape)
+	if HasTag(hitBody, "mirror2") and currentLength < maxDist then
+		local alreadyHit = false
+		for i = 1, #deflectorsHit do
+			if deflectorsHit[i] == hitBody then
+				alreadyHit = true
+				break
+			end
+		end
+		if not alreadyHit then
+			deflectorsHit[#deflectorsHit+1] = hitBody
+			local t = GetBodyTransform(hitBody)
+			local refDir = TransformToParentVec(t, Vec(0, 0, 1))
+			SetShapeEmissiveScale(hitShape, 1)
+			return shootLaser(hitBody, hitShape, t.pos, refDir, currentLength + length, deflectorsHit)
+		end
+	end
+	local hitBody = GetShapeBody(hitShape)
+	if HasTag(hitBody, "mirror") and currentLength < maxDist then
+		local refDir = VecSub(dir, VecScale(hitNormal, VecDot(hitNormal, dir) * 2))
+		return shootLaser(hitBody, hitShape, hitPoint, refDir, currentLength + length, deflectorsHit)
+	end
+	return currentLength + length, hitPoint, hitBody, hitShape
+end
+
+function drawlaser(pos1, pos2, color, size)
+    visual.drawline(laserSprite, pos1, pos2, {
+        r = color[1], 
+        g = color[2], 
+        b = color[3],
+        additive = true,
+        width = size
+    })
+end
 
 function tool:Initialize()
 	laserReady = 0
@@ -72,6 +90,7 @@ function tool:Initialize()
 	laserLoop = LoadLoop("MOD/assets/laser-loop.ogg")
 	laserHitLoop = LoadLoop("MOD/assets/laser-hit-loop.ogg")
 	laserSprite = LoadSprite("MOD/assets/laser.png")
+	laserSpriteOg = LoadSprite("MOD/assets/laserog.png")
 	laserDist = 0
 	laserHitScale = 0
 	deflectors = FindBodies("mirror2", true)
@@ -109,33 +128,26 @@ function tool:RightClickReleased()
 end
 
 function tool:Tick()
-    -- local now = GetTime()
-    -- local lc = VecLerp(Vec(1, 0, 1), Vec(0, 1, 1), 0.5 + math.sin(now)/2)
+	QueryRequire("physical")
     SetToolTransform(toolpos)
     local target = PLAYER:GetCamera():Raycast(500, -1)
-
+    local laserTarget = self:GetBoneGlobalTransform('root'):Raycast(500, -1)
+    if InputPressed("alt") then
+        updateLaserMode()
+    end
     if InputDown('lmb') then
         local col = laserColors[GetInt("savegame.mod.laserMode")]
         local brt = brightness[GetInt("savegame.mod.laserMode")]
         local newCol = {};
-        PointLight(target.hitpos, col[1], col[2], col[3], 1)
-        PointLight(target.hitpos, brt[1], brt[2], brt[3], 0.01)
-        PointLight(self:GetBoneGlobalTransform('tip').pos, newCol[1], newCol[2], newCol[3], 1)
-        DebugCross(self:GetBoneGlobalTransform('tip').pos)
-        visual.drawline(laserSprite, self:GetBoneGlobalTransform('nozzle').pos, target.hitpos, {
-            r = col[1], 
-            g = col[2], 
-            b = col[3],
-            additive = true,
-            width = 0.5
-        })
-        visual.drawline(laserSprite, self:GetBoneGlobalTransform('nozzle').pos, target.hitpos, {
-            r = brt[1], 
-            g = brt[2], 
-            b = brt[3],
-            additive = true,
-            width = 0.05 + math.random() * 0.01
-        })
+        PointLight(laserTarget.hitpos, col[1], col[2], col[3], 1)
+        PointLight(laserTarget.hitpos, brt[1], brt[2], brt[3], 0.01)
+        PointLight(self:GetBoneGlobalTransform('tip').pos, col[1], col[2], col[3], 1)
+        drawlaser(self:GetBoneGlobalTransform('nozzle').pos, laserTarget.hitpos, col, 0.5)
+        drawlaser(self:GetBoneGlobalTransform('nozzle').pos, laserTarget.hitpos, brt, 0.05)
+        local body = GetShapeBody(target.shape)
+        if HasTag(body, "mirror2") then
+            
+        end
     end
 end
 
@@ -146,17 +158,13 @@ tool.model = {
         <group id_="2048256128" open_="true" name="base" pos="0.0 0.0 0.0">
             <vox id_="1640400640" pos="-0.025 -0.175 0.175" rot="0.0 0.0 0.0" file="MOD/assets/laser.vox" object="laserbase" scale="0.5"/>
         </group>
-        <group id_="1912784896" open_="true" name="ring" pos="0.0 0.0 -0.25" rot="0.0 0.0 0.0">
-            <vox id_="2089677312" pos="-0.025 -0.325 0.025" rot="0.0 0.0 0.0" file="MOD/assets/laser.vox" object="laserring" scale="0.5"/>
-        </group>
         <location id_="1100482176" name="nozzle" pos="0.0 0.0 0.275"/>
-        <location id_="2067721472" name="tip" pos="0.0 0.0 -0.425"/>
+        <location id_="2067721472" name="tip" pos="0.0 0.0 -0.525"/>
     </group>
 </prefab>
     ]],
     objects = {
         {'laserbase', Vec(7, 12, 7)}, -- these sizes were swapped (and the 12 was a 20)
-        {'laserring', Vec(13, 1, 13)},
     }
 }
 
