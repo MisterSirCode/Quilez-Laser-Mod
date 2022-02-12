@@ -101,7 +101,7 @@ end
 
 function tool:Animate()
     local ar = self.armature
-    local target = PLAYER:GetCamera():Raycast(500, -1)
+    local target = PLAYER:GetCamera():Raycast(maxDist, -1)
     local TinT = self:GetPredictedTransform():ToLocal(target.hitpos)
     ar:SetBoneTransform("root", Transform(Vec(0, 0, 0), QuatLookAt(Vec(0, 0, 0), TinT)))
 end
@@ -127,11 +127,11 @@ end
 function tool:RightClickReleased()
 end
 
-function tool:Tick()
+function tool:Tick(dt)
 	QueryRequire("physical")
     SetToolTransform(toolpos)
-    local target = PLAYER:GetCamera():Raycast(500, -1)
-    -- local target = self:GetBoneGlobalTransform('root'):Raycast(500, -1)
+    local target = PLAYER:GetCamera():Raycast(maxDist, -1)
+    -- local target = self:GetBoneGlobalTransform('root'):Raycast(maxDist, -1)
     if InputPressed("alt") then
         updateLaserMode()
     end
@@ -147,26 +147,39 @@ function tool:Tick()
         local body = GetShapeBody(target.shape)
         local dir = VecNormalize(VecSub(target.hitpos, self:GetBoneGlobalTransform('nozzle').pos))
         if HasTag(body, "mirror2") then
-            
-        else
-			if GetInt("savegame.mod.laserMode") == 1 then
-				MakeHole(target.hitpos, 0.5, 0.3, 0.1, true)
-				SpawnFire(target.hitpos)
-			elseif GetInt("savegame.mod.laserMode") == 2 then
-				local curPos = target.hitpos
-				for i=1, 5 do
-					curPos = VecAdd(curPos, VecScale(VecScale(dir, dt), 6))
-					MakeHole(curPos, 0.5, 0.4, 0.3, true)
-				end
-			else
-				local curPos = target.hitpos
-				for i=1, 5 do
-					curPos = VecAdd(curPos, VecScale(VecScale(dir, dt), 6))
-					SpawnFire(curPos)
-					emitSmoke(curPos, 1.0)
+			local alreadyHit = false
+			for i = 1, #deflectorsHit do
+				if deflectorsHit[i] == hitBody then
+					alreadyHit = true
+					break
 				end
 			end
+			if not alreadyHit then
+				deflectorsHit[#deflectorsHit+1] = hitBody
+				local t = GetBodyTransform(hitBody)
+				local refDir = TransformToParentVec(t, Vec(0, 0, 1))
+				SetShapeEmissiveScale(hitShape, 1)
+				local length, hitPoint, hitBody, hitShape = shootLaser(hitBody, hitShape, t.pos, refDir, currentLength + length, deflectorsHit)
+			end
+        else
         end
+		if GetInt("savegame.mod.laserMode") == 1 then
+			MakeHole(target.hitpos, 0.5, 0.3, 0.1, true)
+			SpawnFire(target.hitpos)
+		elseif GetInt("savegame.mod.laserMode") == 2 then
+			local curPos = target.hitpos
+			for i=1, 5 do
+				curPos = VecAdd(curPos, VecScale(VecScale(dir, dt), 6))
+				MakeHole(curPos, 0.5, 0.4, 0.3, true)
+			end
+		else
+			local curPos = target.hitpos
+			for i=1, 5 do
+				curPos = VecAdd(curPos, VecScale(VecScale(dir, dt), 6))
+				SpawnFire(curPos)
+				emitSmoke(curPos, 1.0)
+			end
+		end
     end
 end
 
