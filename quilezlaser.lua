@@ -131,7 +131,7 @@ function tool:Tick()
 	QueryRequire("physical")
     SetToolTransform(toolpos)
     local target = PLAYER:GetCamera():Raycast(500, -1)
-    local laserTarget = self:GetBoneGlobalTransform('root'):Raycast(500, -1)
+    -- local target = self:GetBoneGlobalTransform('root'):Raycast(500, -1)
     if InputPressed("alt") then
         updateLaserMode()
     end
@@ -139,14 +139,33 @@ function tool:Tick()
         local col = laserColors[GetInt("savegame.mod.laserMode")]
         local brt = brightness[GetInt("savegame.mod.laserMode")]
         local newCol = {};
-        PointLight(laserTarget.hitpos, col[1], col[2], col[3], 1)
-        PointLight(laserTarget.hitpos, brt[1], brt[2], brt[3], 0.01)
+        PointLight(target.hitpos, col[1], col[2], col[3], 1)
+        PointLight(target.hitpos, brt[1], brt[2], brt[3], 0.01)
         PointLight(self:GetBoneGlobalTransform('tip').pos, col[1], col[2], col[3], 1)
-        drawlaser(self:GetBoneGlobalTransform('nozzle').pos, laserTarget.hitpos, col, 0.5)
-        drawlaser(self:GetBoneGlobalTransform('nozzle').pos, laserTarget.hitpos, brt, 0.05)
+        drawlaser(self:GetBoneGlobalTransform('nozzle').pos, target.hitpos, col, 0.5)
+        drawlaser(self:GetBoneGlobalTransform('nozzle').pos, target.hitpos, brt, 0.05)
         local body = GetShapeBody(target.shape)
+        local dir = VecNormalize(VecSub(target.hitpos, self:GetBoneGlobalTransform('nozzle').pos))
         if HasTag(body, "mirror2") then
             
+        else
+			if GetInt("savegame.mod.laserMode") == 1 then
+				MakeHole(target.hitpos, 0.5, 0.3, 0.1, true)
+				SpawnFire(target.hitpos)
+			elseif GetInt("savegame.mod.laserMode") == 2 then
+				local curPos = target.hitpos
+				for i=1, 5 do
+					curPos = VecAdd(curPos, VecScale(VecScale(dir, dt), 6))
+					MakeHole(curPos, 0.5, 0.4, 0.3, true)
+				end
+			else
+				local curPos = target.hitpos
+				for i=1, 5 do
+					curPos = VecAdd(curPos, VecScale(VecScale(dir, dt), 6))
+					SpawnFire(curPos)
+					emitSmoke(curPos, 1.0)
+				end
+			end
         end
     end
 end
