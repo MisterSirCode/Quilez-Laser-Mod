@@ -131,6 +131,7 @@ function tool:Tick(dt)
 	QueryRequire("physical")
     SetToolTransform(toolpos)
     local target = PLAYER:GetCamera():Raycast(maxDist, -1)
+	local mode = GetInt("savegame.mod.laserMode")
     -- local target = self:GetBoneGlobalTransform('root'):Raycast(maxDist, -1)
     if InputPressed("alt") then
         updateLaserMode()
@@ -163,10 +164,10 @@ function tool:Tick(dt)
 			end
         else
         end
-		if GetInt("savegame.mod.laserMode") == 1 then
+		if mode == 1 then
 			MakeHole(target.hitpos, 0.5, 0.3, 0.1, true)
 			SpawnFire(target.hitpos)
-		elseif GetInt("savegame.mod.laserMode") == 2 then
+		elseif mode == 2 then
 			local curPos = target.hitpos
 			for i=1, 5 do
 				curPos = VecAdd(curPos, VecScale(VecScale(dir, dt), 6))
@@ -201,3 +202,18 @@ tool.model = {
 }
 
 RegisterToolUMF('quilezlaser', tool)
+
+function draw()
+	local mode = GetInt("savegame.mod.laserMode")
+	if GetString("game.player.tool") == "quilezlaser" then
+		UiAlign("center bottom")
+		UiTranslate(UiCenter(), UiHeight() - 100)
+		UiFont("bold.ttf", 24)
+		UiTextShadow(0, 0, 0, 0.5, 1.5)
+		local col = laserColors[mode]
+		UiColor(col[1] / 2 + 0.5, col[2] / 2 + 0.5, col[3] / 2 + 0.5)
+		UiText(laserNames[mode], true)
+		UiFont("bold.ttf", 16)
+		UiText("Press ALT to Switch Modes", true)
+	end
+end
