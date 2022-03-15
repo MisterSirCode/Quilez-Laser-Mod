@@ -139,15 +139,16 @@ function tool:Tick(dt)
     if InputDown('lmb') then
         local col = laserColors[GetInt("savegame.mod.laserMode")]
         local brt = brightness[GetInt("savegame.mod.laserMode")]
+		local length = 0;
         local newCol = {};
         PointLight(target.hitpos, col[1], col[2], col[3], 1)
         PointLight(target.hitpos, brt[1], brt[2], brt[3], 0.01)
         PointLight(self:GetBoneGlobalTransform('tip').pos, col[1], col[2], col[3], 1)
         drawlaser(self:GetBoneGlobalTransform('nozzle').pos, target.hitpos, col, 0.5)
         drawlaser(self:GetBoneGlobalTransform('nozzle').pos, target.hitpos, brt, 0.05)
-        local body = GetShapeBody(target.shape)
         local dir = VecNormalize(VecSub(target.hitpos, self:GetBoneGlobalTransform('nozzle').pos))
-        if HasTag(body, "mirror2") then
+		local hitBody = GetEntityHandle(target.shape:GetBody())
+        if (target.shape:GetBody()):HasTag('mirror2') then
 			local alreadyHit = false
 			for i = 1, #deflectorsHit do
 				if deflectorsHit[i] == hitBody then
@@ -162,6 +163,9 @@ function tool:Tick(dt)
 				SetShapeEmissiveScale(hitShape, 1)
 				local length, hitPoint, hitBody, hitShape = shootLaser(hitBody, hitShape, t.pos, refDir, currentLength + length, deflectorsHit)
 			end
+		elseif (target.shape:GetBody()):HasTag('mirror') then
+			local refDir = VecSub(dir, VecScale(hitNormal, VecDot(hitNormal, dir) * 2))
+			return shootLaser(GetEntityHandle(target.shape:GetBody()), hitShape, hitPoint, refDir, currentLength + length, deflectorsHit)
         else
         end
 		if mode == 1 then
