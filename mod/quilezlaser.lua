@@ -94,51 +94,58 @@ function drawLaser(startpos, endpos, col, brt)
 end
 
 function customRaycast(pos, dir, dist, mul, radius, rejectTransparent)
-	if mul then
-		vector_meta.Mul( dir, mul )
-	end
-	local hit, dist2, normal, shape = QueryRaycast(pos, dir, dist, radius, rejectTransparent)
-	return {
-		hit = hit,
-		dist = dist2,
-		normal = hit and MakeVector(normal),
-		shape = hit and Shape and Shape(shape) or shape,
-		hitpos = vector_meta.__add(pos, vector_meta.Mul(dir, hit and dist2 or dist)),
-	}
+    if mul then
+        dir = dir * mul
+    end
+    local hit, dist2, normal, shape = QueryRaycast(pos, dir, dist, radius, rejectTransparent)
+    return {
+        hit = hit,
+        dist = dist2,
+        normal = hit and MakeVector(normal),
+        shape = hit and Shape and Shape(shape) or shape,
+        hitpos = pos + dir:Mul(hit and dist2 or dist),
+    }
 end
 
 function drawLaserRecursive(initPos, target, dir, mode, col, brt, dt, depth)
-	local curDepth = depth
-	local reflected = dir - target.normal * target.normal:Dot(dir) * 2
-	if (target.shape:GetBody()):HasTag('mirror2') then
-	elseif (target.shape:GetBody()):HasTag('mirror') then
-		if depth <= maxLaserDepth then
-			drawLaser(initPos, target.hitpos, col, brt)
-			local rot = QuatLookAt(target.hitpos, target.hitpos + target.normal)
-			local newTarget = customRaycast(target.hitpos, reflected, maxDist, 1)
-			drawLaser(target.hitpos, newTarget.hitpos, col, brt)
-			drawLaserRecursive(newTarget.hitpos, newTarget, reflected, mode, col, brt, dt, depth + 1)
-		end
-	else
-		drawLaser(initPos, target.hitpos, col, brt)
-		-- No mirror or deflector, business as usual
-		if mode == 1 then
-			MakeHole(target.hitpos, 0.5, 0.3, 0.1, true)
-			SpawnFire(target.hitpos)
-		elseif mode == 2 then
-			local curPos = target.hitpos
-			for i=1, 5 do
-				curPos = VecAdd(curPos, VecScale(VecScale(dir, dt), 6))
-				MakeHole(curPos, 0.5, 0.4, 0.3, true)
+    local curLaserDepth = depth
+	if target.hit then
+		-- Only do these checks IF IT HITS SOMETHING..... dont want errors :L
+		if (target.shape:GetBody()):HasTag('mirror2') then
+		elseif (target.shape:GetBody()):HasTag('mirror') then
+			-- Hit a mirror, recursively fire lasers until maximum depth
+			local reflected = dir - target.normal * target.normal:Dot(dir) * 2
+			if curLaserDepth <= maxLaserDepth then
+				drawLaser(initPos, target.hitpos, col, brt)
+				local rot = QuatLookAt(target.hitpos, target.hitpos + target.normal)
+				local newTarget = customRaycast(target.hitpos + reflected * 0.1, reflected, maxDist, 1)
+				drawLaserRecursive(target.hitpos, newTarget, reflected, mode, col, brt, dt, curLaserDepth + 1)
 			end
 		else
-			local curPos = target.hitpos
-			for i=1, 5 do
-				curPos = VecAdd(curPos, VecScale(VecScale(dir, dt), 6))
-				SpawnFire(curPos)
-				emitSmoke(curPos, 1.0)
+			drawLaser(initPos, target.hitpos, col, brt)
+			-- No mirror or deflector, business as usual
+			if mode == 1 then
+				MakeHole(target.hitpos, 0.5, 0.3, 0.1, true)
+				SpawnFire(target.hitpos)
+			elseif mode == 2 then
+				local curPos = target.hitpos
+				for i=1, 5 do
+					curPos = VecAdd(curPos, VecScale(VecScale(dir, dt), 6))
+					MakeHole(curPos, 0.5, 0.4, 0.3, true)
+				end
+			else
+				local curPos = target.hitpos
+				for i=1, 5 do
+					curPos = VecAdd(curPos, VecScale(VecScale(dir, dt), 6))
+					SpawnFire(curPos)
+					MakeHole(curPos, 0.5, 0, 0, true)
+					emitSmoke(curPos, 1.0)
+				end
 			end
 		end
+	else 
+		-- If firing laser at sky... just fire laser... nothing else
+		drawLaser(initPos, target.hitpos, col, brt)
 	end
 end
 
@@ -177,8 +184,7 @@ function tool:Tick(dt)
 			local brt = brightness[GetInt("savegame.mod.laserMode")]
 			local length = 0;
 			local newCol = {};
-			local dir = (target.hitpos - self:GetBoneGlobalTransform('nozzle').pos):Normalize()
-			local hitBody = GetEntityHandle(target.shape:GetBody())
+			local dir = (target.hitpos - PLAYER:GetCamera().pos):Normalize()
 			drawLaserRecursive(self:GetBoneGlobalTransform('nozzle').pos, target, dir, mode, col, brt, dt, 0)
 		end
 	end
