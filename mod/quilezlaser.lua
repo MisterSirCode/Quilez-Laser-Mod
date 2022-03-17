@@ -20,6 +20,7 @@ local tool = {
     ammo = 10000
 }
 local maxDist = 1000
+local maxLaserDepth = 10
 local qlDeflectors = {}
 
 function updateLaserMode()
@@ -92,6 +93,41 @@ function drawLaser(startpos, endpos, col, brt)
 	drawlaserSprite(startpos, endpos, brt, 0.05)
 end
 
+function drawLaserRecursive(initPos, target, dir, mode, col, brt, dt, depth)
+	local curDepth = depth
+	local reflected = dir - target.normal * target.normal:Dot(dir) * 2
+	if (target.shape:GetBody()):HasTag('mirror2') then
+	elseif (target.shape:GetBody()):HasTag('mirror') then
+		if depth <= maxLaserDepth then
+			drawLaser(initPos, target.hitpos, col, brt)
+			local rot = QuatLookAt(target.hitpos, target.hitpos * target.normal)
+			local newTarget = (Transformation(target.hitpos, rot)):Raycast(maxDist, 1)
+			drawLaser(target.hitpos, newTarget.hitpos, col, brt)
+			drawLaserRecursive(newTarget.hitpos, newTarget, reflected, mode, col, brt, dt, depth + 1)
+		end
+	else
+		drawLaser(initPos, target.hitpos, col, brt)
+		-- No mirror or deflector, business as usual
+		if mode == 1 then
+			MakeHole(target.hitpos, 0.5, 0.3, 0.1, true)
+			SpawnFire(target.hitpos)
+		elseif mode == 2 then
+			local curPos = target.hitpos
+			for i=1, 5 do
+				curPos = VecAdd(curPos, VecScale(VecScale(dir, dt), 6))
+				MakeHole(curPos, 0.5, 0.4, 0.3, true)
+			end
+		else
+			local curPos = target.hitpos
+			for i=1, 5 do
+				curPos = VecAdd(curPos, VecScale(VecScale(dir, dt), 6))
+				SpawnFire(curPos)
+				emitSmoke(curPos, 1.0)
+			end
+		end
+	end
+end
+
 function tool:Initialize()
 	laserReady = 0
 	laserFireTime = 0
@@ -114,65 +150,24 @@ function tool:Animate()
     ar:SetBoneTransform("root", Transform(Vec(0, 0, 0), QuatLookAt(Vec(0, 0, 0), TinT)))
 end
 
-function tool:Deploy()
-end
-
-function tool:Holster()
-end
-
-function tool:GetTarget()
-end
-
-function tool:LeftClick()
-    local target = PLAYER:GetCamera():Raycast(maxDist, -1)
-	local mode = GetInt("savegame.mod.laserMode")
-	local col = laserColors[GetInt("savegame.mod.laserMode")]
-	local brt = brightness[GetInt("savegame.mod.laserMode")]
-	local length = 0;
-	local newCol = {};
-	local dir = VecNormalize(VecSub(target.hitpos, self:GetBoneGlobalTransform('nozzle').pos))
-	local hitBody = GetEntityHandle(target.shape:GetBody())
-	-- Draw Laser
-
-		drawLaser(self:GetBoneGlobalTransform('nozzle').pos, target.hitpos, col, brt)
-		
-	-- Do other stuff
-	if (target.shape:GetBody()):HasTag('mirror2') then
-	elseif (target.shape:GetBody()):HasTag('mirror') then
-	else
-	end
-	if mode == 1 then
-		MakeHole(target.hitpos, 0.5, 0.3, 0.1, true)
-		SpawnFire(target.hitpos)
-	elseif mode == 2 then
-		local curPos = target.hitpos
-		for i=1, 5 do
-			curPos = VecAdd(curPos, VecScale(VecScale(dir, dt), 6))
-			MakeHole(curPos, 0.5, 0.4, 0.3, true)
-		end
-	else
-		local curPos = target.hitpos
-		for i=1, 5 do
-			curPos = VecAdd(curPos, VecScale(VecScale(dir, dt), 6))
-			SpawnFire(curPos)
-			emitSmoke(curPos, 1.0)
-		end
-	end
-end
-
-function tool:RightClick()
-end
-
-function tool:LeftClickReleased()
-end
-
-function tool:RightClickReleased()
-end
-
 function tool:Tick(dt)
-    if InputPressed("alt") then
-        updateLaserMode()
-    end
+	if GetBool("game.player.canusetool") then
+		SetToolTransform(toolpos)
+		local target = PLAYER:GetCamera():Raycast(maxDist, -1)
+		local mode = GetInt("savegame.mod.laserMode")
+		if InputPressed("alt") then
+			updateLaserMode()
+		end
+		if InputDown("lmb") then
+			local col = laserColors[GetInt("savegame.mod.laserMode")]
+			local brt = brightness[GetInt("savegame.mod.laserMode")]
+			local length = 0;
+			local newCol = {};
+			local dir = (target.hitpos - self:GetBoneGlobalTransform('nozzle').pos):Normalize()
+			local hitBody = GetEntityHandle(target.shape:GetBody())
+			drawLaserRecursive(self:GetBoneGlobalTransform('nozzle').pos, target, dir, mode, col, brt, dt, 0)
+		end
+	end
 end
 
 tool.model = {
@@ -188,7 +183,7 @@ tool.model = {
 </prefab>
     ]],
     objects = {
-        {'laserbase', Vec(7, 12, 7)}, -- these sizes were swapped (and the 12 was a 20)
+        {'laserbase', Vec(7, 12, 7)}
     }
 }
 
