@@ -138,7 +138,7 @@ function drawLaserRecursive(initPos, target, dir, mode, col, brt, dt, depth)
 				for i=1, 5 do
 					curPos = VecAdd(curPos, VecScale(VecScale(dir, dt), 6))
 					SpawnFire(curPos)
-					MakeHole(curPos, 0.5, 0, 0, true)
+					MakeHole(curPos, 0.1, 0, 0, true)
 					emitSmoke(curPos, 1.0)
 				end
 			end
