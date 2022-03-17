@@ -100,7 +100,7 @@ function drawLaserRecursive(initPos, target, dir, mode, col, brt, dt, depth)
 	elseif (target.shape:GetBody()):HasTag('mirror') then
 		if depth <= maxLaserDepth then
 			drawLaser(initPos, target.hitpos, col, brt)
-			local rot = QuatLookAt(target.hitpos, target.hitpos * target.normal)
+			local rot = QuatLookAt(target.hitpos, target.hitpos + target.normal)
 			local newTarget = (Transformation(target.hitpos, rot)):Raycast(maxDist, 1)
 			drawLaser(target.hitpos, newTarget.hitpos, col, brt)
 			drawLaserRecursive(newTarget.hitpos, newTarget, reflected, mode, col, brt, dt, depth + 1)
