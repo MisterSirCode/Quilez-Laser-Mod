@@ -93,6 +93,20 @@ function drawLaser(startpos, endpos, col, brt)
 	drawlaserSprite(startpos, endpos, brt, 0.05)
 end
 
+function customRaycast(pos, dir, dist, mul, radius, rejectTransparent)
+	if mul then
+		vector_meta.Mul( dir, mul )
+	end
+	local hit, dist2, normal, shape = QueryRaycast(pos, dir, dist, radius, rejectTransparent)
+	return {
+		hit = hit,
+		dist = dist2,
+		normal = hit and MakeVector(normal),
+		shape = hit and Shape and Shape(shape) or shape,
+		hitpos = vector_meta.__add(pos, vector_meta.Mul(dir, hit and dist2 or dist)),
+	}
+end
+
 function drawLaserRecursive(initPos, target, dir, mode, col, brt, dt, depth)
 	local curDepth = depth
 	local reflected = dir - target.normal * target.normal:Dot(dir) * 2
@@ -101,7 +115,7 @@ function drawLaserRecursive(initPos, target, dir, mode, col, brt, dt, depth)
 		if depth <= maxLaserDepth then
 			drawLaser(initPos, target.hitpos, col, brt)
 			local rot = QuatLookAt(target.hitpos, target.hitpos + target.normal)
-			local newTarget = (Transformation(target.hitpos, rot)):Raycast(maxDist, 1)
+			local newTarget = customRaycast(target.hitpos, reflected, maxDist, 1)
 			drawLaser(target.hitpos, newTarget.hitpos, col, brt)
 			drawLaserRecursive(newTarget.hitpos, newTarget, reflected, mode, col, brt, dt, depth + 1)
 		end
